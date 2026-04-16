@@ -4,7 +4,7 @@
 #ifdef USE_SOMFY_COVER_RX
 #include "esphome/components/remote_receiver/remote_receiver.h"
 #endif
-#include "esphome/components/time_based/time_based_cover.h"
+#include "esphome/components/time_based/cover/time_based_cover.h"
 #include "esphome/core/automation.h"
 #include "esphome/core/component.h"
 #include "esphome/components/remote_transmitter/remote_transmitter.h"
