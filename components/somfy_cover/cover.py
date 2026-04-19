@@ -5,8 +5,10 @@ from esphome.const import (
     CONF_CLOSE_DURATION,
     CONF_ID,
     CONF_OPEN_DURATION,
+    CONF_PLATFORM,
     PLATFORM_ESP32
 )
+from esphome.core import CORE
 
 CODEOWNERS = ["@LeonardPitzu"]
 
@@ -72,6 +74,15 @@ CONFIG_SCHEMA = cv.All(
 
 
 async def to_code(config):
+    # ESPHome 2026.4+ moved time_based_cover.{h,cpp} into a cover/ sub-platform
+    # (esphome/esphome#15313). The files are only copied to the build tree when a
+    # "cover: platform: time_based" entry exists in the config.  Since we extend
+    # TimeBasedCover in C++ but don't declare that platform in YAML, we inject a
+    # minimal placeholder so copy_src_tree() picks up the C++ sources.
+    cover_configs = CORE.config.get("cover", [])
+    if not any(c.get(CONF_PLATFORM) == "time_based" for c in cover_configs):
+        cover_configs.append({CONF_PLATFORM: "time_based"})
+
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await cover.register_cover(var, config)
