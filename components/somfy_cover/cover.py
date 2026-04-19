@@ -8,7 +8,6 @@ from esphome.const import (
     CONF_PLATFORM,
     PLATFORM_ESP32
 )
-from esphome.core import CORE
 
 CODEOWNERS = ["@LeonardPitzu"]
 
@@ -79,6 +78,7 @@ async def to_code(config):
     # "cover: platform: time_based" entry exists in the config.  Since we extend
     # TimeBasedCover in C++ but don't declare that platform in YAML, we inject a
     # minimal placeholder so copy_src_tree() picks up the C++ sources.
+    from esphome.core import CORE  # imported here to avoid test-time import errors
     cover_configs = CORE.config.get("cover", [])
     if not any(c.get(CONF_PLATFORM) == "time_based" for c in cover_configs):
         cover_configs.append({CONF_PLATFORM: "time_based"})
