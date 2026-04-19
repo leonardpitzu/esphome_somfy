@@ -73,15 +73,19 @@ CONFIG_SCHEMA = cv.All(
 
 
 async def to_code(config):
-    # ESPHome 2026.4+ moved time_based_cover.{h,cpp} into a cover/ sub-platform
-    # (esphome/esphome#15313). The files are only copied to the build tree when a
-    # "cover: platform: time_based" entry exists in the config.  Since we extend
-    # TimeBasedCover in C++ but don't declare that platform in YAML, we inject a
-    # minimal placeholder so copy_src_tree() picks up the C++ sources.
-    from esphome.core import CORE  # imported here to avoid test-time import errors
-    cover_configs = CORE.config.get("cover", [])
-    if not any(c.get(CONF_PLATFORM) == "time_based" for c in cover_configs):
-        cover_configs.append({CONF_PLATFORM: "time_based"})
+    # SomfyCover extends TimeBasedCover in C++.  Since ESPHome 2026.4 the C++
+    # sources live under the time_based/cover/ sub-platform and are only copied
+    # to the build tree when an explicit "cover: platform: time_based" YAML entry
+    # exists.  AUTO_LOAD cannot be used here because it would trigger schema
+    # validation (which fails — the platform has required keys we don't supply).
+    # Instead we inject a minimal placeholder *after* generate_cpp_contents() has
+    # already collected to_code jobs, so the platform's own to_code() never runs,
+    # but copy_src_tree() — which runs later — picks up the C++ sources.
+    from esphome.core import CORE  # deferred to avoid test-time import errors
+
+    covers = CORE.config.get("cover", [])
+    if not any(c.get(CONF_PLATFORM) == "time_based" for c in covers):
+        covers.append({CONF_PLATFORM: "time_based"})
 
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
