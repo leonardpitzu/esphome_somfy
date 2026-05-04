@@ -152,6 +152,20 @@ CONFIG_SCHEMA = cv.All(
 
 
 async def to_code(config):
+    # SomfyCover extends TimeBasedCover in C++.  Since ESPHome 2026.4 the C++
+    # sources live under the time_based/cover/ sub-platform and are only copied
+    # to the build tree when an explicit "cover: platform: time_based" YAML entry
+    # exists.  AUTO_LOAD cannot be used here because it would trigger schema
+    # validation (which fails — the platform has required keys we don't supply).
+    # Instead we inject a minimal placeholder so copy_src_tree() picks up the
+    # C++ sources.
+    from esphome.const import CONF_PLATFORM
+    from esphome.core import CORE
+
+    covers = CORE.config.get("cover", [])
+    if not any(c.get(CONF_PLATFORM) == "time_based" for c in covers):
+        covers.append({CONF_PLATFORM: "time_based"})
+
     typ = config[CONF_TYPE]
 
     if typ == TYPE_RTS:

@@ -75,13 +75,11 @@ class SomfyRtsHub : public Component
   void set_remote_transmitter(remote_transmitter::RemoteTransmitterComponent *t) {
     this->remote_transmitter_ = t;
   }
-  void set_remote_receiver(remote_receiver::RemoteReceiverComponent *r) {
 #ifdef USE_SOMFY_COVER_RX
+  void set_remote_receiver(remote_receiver::RemoteReceiverComponent *r) {
     this->remote_receiver_ = r;
-#else
-    (void) r;
-#endif
   }
+#endif
 
   // TX: encode and transmit an RTS frame
   void send_frame(const std::array<uint8_t, 7> &frame_bytes, uint8_t repeat_count);
