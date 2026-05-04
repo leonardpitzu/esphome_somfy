@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef USE_SOMFY_IOHC
+
 #include "esphome/core/component.h"
 #include "esphome/components/cc1101/cc1101.h"
 #include <cstdint>
@@ -174,3 +176,5 @@ class SomfyIohcHub : public Component,
 
 }  // namespace somfy
 }  // namespace esphome
+
+#endif  // USE_SOMFY_IOHC

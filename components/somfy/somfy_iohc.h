@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef USE_SOMFY_IOHC
+
 #include "somfy_hub_iohc.h"
 #include "NVSRollingCodeStorage.h"
 #include "esphome/components/button/button.h"
@@ -136,3 +138,5 @@ class SomfyIohcCover : public time_based::TimeBasedCover {
 
 }  // namespace somfy
 }  // namespace esphome
+
+#endif  // USE_SOMFY_IOHC

@@ -1,4 +1,7 @@
 #include "somfy_hub_iohc.h"
+
+#ifdef USE_SOMFY_IOHC
+
 #include "esphome/core/log.h"
 #include <cstring>
 #include <mbedtls/aes.h>
@@ -400,3 +403,5 @@ void SomfyIohcHub::handle_2w_packet_(const IohcDecodedPacket &pkt) {
 
 }  // namespace somfy
 }  // namespace esphome
+
+#endif  // USE_SOMFY_IOHC

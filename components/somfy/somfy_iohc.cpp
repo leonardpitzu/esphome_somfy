@@ -1,4 +1,7 @@
 #include "somfy_iohc.h"
+
+#ifdef USE_SOMFY_IOHC
+
 #include "esphome/core/log.h"
 #include <cstring>
 
@@ -276,3 +279,5 @@ void SomfyIohcCover::on_iohc_packet_(const IohcDecodedPacket &pkt) {
 
 }  // namespace somfy
 }  // namespace esphome
+
+#endif  // USE_SOMFY_IOHC
