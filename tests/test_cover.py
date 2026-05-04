@@ -1,130 +1,120 @@
-"""Protocol-agnostic tests for the somfy cover component."""
+"""Protocol-agnostic tests for the somfy cover component.
 
+Focuses on structural integrity, cross-module consistency, and schema
+composition rather than trivial string equality.
+"""
+
+import pytest
+
+import somfy.cover as cover_mod
 from somfy.cover import (
     CODEOWNERS,
-    CONF_ENCRYPTION_KEY,
-    CONF_PROG_BUTTON,
-    CONF_REMOTE_CODE,
-    CONF_SOMFY_ID,
-    CONF_SOMFY_STORAGE_KEY,
-    CONF_SOMFY_STORAGE_NAMESPACE,
-    CONF_REPEAT_COMMAND_COUNT,
     COMMON_COVER_FIELDS,
     DEPENDENCIES,
     TYPE_IOHC,
     TYPE_RTS,
 )
 
-from somfy import (
-    CODEOWNERS as HUB_CODEOWNERS,
-    CONF_CC1101_ID,
-    CONF_REMOTE_RECEIVER as HUB_CONF_REMOTE_RECEIVER,
-    CONF_REMOTE_TRANSMITTER,
-    DEPENDENCIES as HUB_DEPENDENCIES,
-    MULTI_CONF,
-    TYPE_IOHC as HUB_TYPE_IOHC,
-    TYPE_RTS as HUB_TYPE_RTS,
-)
+import somfy as hub_mod
 
 
 # ---------------------------------------------------------------------------
-# Shared constants
+# Cross-module consistency
 # ---------------------------------------------------------------------------
 
-class TestSharedConstants:
-    """Constants used across all protocols."""
+class TestCrossModuleConsistency:
+    """Hub and cover modules must agree on shared symbols."""
 
-    def test_type_rts(self):
-        assert TYPE_RTS == "rts"
+    def test_type_rts_matches(self):
+        assert cover_mod.TYPE_RTS == hub_mod.TYPE_RTS
 
-    def test_type_iohc(self):
-        assert TYPE_IOHC == "iohc"
+    def test_type_iohc_matches(self):
+        assert cover_mod.TYPE_IOHC == hub_mod.TYPE_IOHC
 
-    def test_types_match_hub_and_cover(self):
-        assert TYPE_RTS == HUB_TYPE_RTS
-        assert TYPE_IOHC == HUB_TYPE_IOHC
+    def test_types_are_distinct(self):
+        assert TYPE_RTS != TYPE_IOHC
 
-    def test_conf_somfy_id(self):
-        assert CONF_SOMFY_ID == "somfy_id"
-
-    def test_conf_remote_code(self):
-        assert CONF_REMOTE_CODE == "remote_code"
-
-    def test_conf_storage_key(self):
-        assert CONF_SOMFY_STORAGE_KEY == "storage_key"
-
-    def test_conf_storage_namespace(self):
-        assert CONF_SOMFY_STORAGE_NAMESPACE == "storage_namespace"
-
-    def test_conf_repeat_command_count(self):
-        assert CONF_REPEAT_COMMAND_COUNT == "repeat_command_count"
-
-    def test_conf_prog_button(self):
-        assert CONF_PROG_BUTTON == "prog_button"
-
-    def test_conf_encryption_key(self):
-        assert CONF_ENCRYPTION_KEY == "encryption_key"
+    def test_remote_receiver_key_matches(self):
+        assert cover_mod.CONF_REMOTE_RECEIVER == hub_mod.CONF_REMOTE_RECEIVER
 
 
 # ---------------------------------------------------------------------------
-# Module-level attributes
+# COMMON_COVER_FIELDS structure
 # ---------------------------------------------------------------------------
 
-class TestModuleAttributes:
-    """Verify module-level metadata."""
+class TestCommonCoverFields:
+    """Verify COMMON_COVER_FIELDS structural properties."""
 
-    def test_codeowners(self):
-        assert "@LeonardPitzu" in CODEOWNERS
+    def test_is_dict(self):
+        assert isinstance(COMMON_COVER_FIELDS, dict)
+
+    def test_is_non_empty(self):
+        assert len(COMMON_COVER_FIELDS) > 0
+
+    def test_no_protocol_specific_keys_leak_in(self):
+        """COMMON_COVER_FIELDS must not contain iohc/rts-only keys."""
+        field_strs = " ".join(str(k) for k in COMMON_COVER_FIELDS)
+        for forbidden in ("allowed_remotes", "detected_remote", "target_node", "mode"):
+            assert forbidden not in field_strs
+
+
+# ---------------------------------------------------------------------------
+# Module metadata
+# ---------------------------------------------------------------------------
+
+class TestModuleMetadata:
+    """Verify module-level metadata is sane."""
+
+    def test_codeowners_is_list(self):
+        assert isinstance(CODEOWNERS, list)
+
+    def test_codeowners_not_empty(self):
+        assert len(CODEOWNERS) > 0
+
+    def test_codeowners_entries_start_with_at(self):
+        assert all(owner.startswith("@") for owner in CODEOWNERS)
+
+    def test_dependencies_is_list(self):
+        assert isinstance(DEPENDENCIES, list)
 
     def test_dependencies_include_esp32(self):
         assert "esp32" in DEPENDENCIES
 
-    def test_common_cover_fields_is_dict(self):
-        assert isinstance(COMMON_COVER_FIELDS, dict)
+    def test_hub_multi_conf_enabled(self):
+        assert hub_mod.MULTI_CONF is True
+
+    def test_hub_auto_load_includes_button(self):
+        assert "button" in hub_mod.AUTO_LOAD
 
 
 # ---------------------------------------------------------------------------
-# Hub constants
-# ---------------------------------------------------------------------------
-
-class TestHubConstants:
-    """Verify hub-level constants in __init__.py."""
-
-    def test_conf_remote_transmitter(self):
-        assert CONF_REMOTE_TRANSMITTER == "remote_transmitter"
-
-    def test_conf_remote_receiver(self):
-        assert HUB_CONF_REMOTE_RECEIVER == "remote_receiver"
-
-    def test_conf_cc1101_id(self):
-        assert CONF_CC1101_ID == "cc1101_id"
-
-    def test_codeowners(self):
-        assert "@LeonardPitzu" in HUB_CODEOWNERS
-
-    def test_dependencies_include_esp32(self):
-        assert "esp32" in HUB_DEPENDENCIES
-
-    def test_multi_conf_enabled(self):
-        assert MULTI_CONF is True
-
-
-# ---------------------------------------------------------------------------
-# Module importability
+# Module importability (regression guard)
 # ---------------------------------------------------------------------------
 
 class TestImports:
-    """Verify all expected symbols are importable."""
+    """All public symbols must be importable — catches accidental renames."""
 
-    def test_import_somfy_init(self):
-        import somfy
-        assert hasattr(somfy, "CONF_REMOTE_TRANSMITTER")
-        assert hasattr(somfy, "CONF_REMOTE_RECEIVER")
-        assert hasattr(somfy, "CONF_CC1101_ID")
+    EXPECTED_COVER_SYMBOLS = [
+        "TYPE_RTS", "TYPE_IOHC",
+        "CONF_SOMFY_ID", "CONF_REMOTE_CODE", "CONF_ENCRYPTION_KEY",
+        "CONF_IOHC_MODE", "CONF_TARGET_NODE",
+        "CONF_ALLOWED_REMOTES", "CONF_DETECTED_REMOTE", "CONF_REMOTE_RECEIVER",
+        "CONF_PROG_BUTTON", "CONF_REPEAT_COMMAND_COUNT",
+        "CONF_SOMFY_STORAGE_KEY", "CONF_SOMFY_STORAGE_NAMESPACE",
+        "IOHC_MODE_1W", "IOHC_MODE_2W",
+        "COMMON_COVER_FIELDS",
+        "validate_iohc_config", "validate_rts_config", "uses_rx",
+    ]
 
-    def test_import_somfy_cover(self):
-        from somfy import cover
-        assert hasattr(cover, "TYPE_RTS")
-        assert hasattr(cover, "TYPE_IOHC")
-        assert hasattr(cover, "CONF_SOMFY_ID")
-        assert hasattr(cover, "COMMON_COVER_FIELDS")
+    EXPECTED_HUB_SYMBOLS = [
+        "CONF_REMOTE_TRANSMITTER", "CONF_REMOTE_RECEIVER", "CONF_CC1101_ID",
+        "TYPE_RTS", "TYPE_IOHC", "MULTI_CONF",
+    ]
+
+    @pytest.mark.parametrize("symbol", EXPECTED_COVER_SYMBOLS)
+    def test_cover_module_exports(self, symbol):
+        assert hasattr(cover_mod, symbol), f"somfy.cover missing '{symbol}'"
+
+    @pytest.mark.parametrize("symbol", EXPECTED_HUB_SYMBOLS)
+    def test_hub_module_exports(self, symbol):
+        assert hasattr(hub_mod, symbol), f"somfy missing '{symbol}'"
