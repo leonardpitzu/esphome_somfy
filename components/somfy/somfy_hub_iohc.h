@@ -1,9 +1,12 @@
 #pragma once
 
+#include "esphome/core/defines.h"
+
 #ifdef USE_SOMFY_IOHC
 
 #include "esphome/core/component.h"
 #include "esphome/components/cc1101/cc1101.h"
+#define MBEDTLS_CONFIG_FILE "mbedtls/esp_config.h"
 #include <cstdint>
 #include <functional>
 #include <vector>

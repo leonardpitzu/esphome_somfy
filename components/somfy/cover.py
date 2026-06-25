@@ -18,7 +18,7 @@ SomfyCover = somfy_ns.class_("SomfyCover", cover.Cover, cg.Component)
 SomfyIohcCover = somfy_ns.class_("SomfyIohcCover", cover.Cover, cg.Component)
 SomfyRtsHub = somfy_ns.class_("SomfyRtsHub", cg.Component)
 SomfyIohcHub = somfy_ns.class_("SomfyIohcHub", cg.Component)
-IohcMode = somfy_ns.enum("IohcMode")
+IohcMode = somfy_ns.enum("IohcMode", is_class=True)
 
 # Shared config keys
 CONF_SOMFY_ID = "somfy_id"
