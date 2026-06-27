@@ -24,6 +24,11 @@ constexpr float RX_POS_OPEN = 1.0f;
 constexpr float RX_POS_CLOSED = 0.0f;
 constexpr float RX_MIN_PUBLISH_DELTA = 0.01f;
 constexpr uint32_t RX_PUBLISH_INTERVAL_MS = 250;
+// Window over which an identical (src, main_param) command is treated as part of
+// the remote's repeat burst rather than a fresh press.
+constexpr uint32_t RX_DEDUP_WINDOW_MS = 1500;
+// Cap how many payload bytes we render to hex (foreign EXECUTE frames are short).
+constexpr size_t RX_HEX_MAX_BYTES = 16;
 
 const char *main_param_name(uint16_t mp) {
   switch (mp) {
@@ -33,6 +38,20 @@ const char *main_param_name(uint16_t mp) {
     case iohc_cmd::MP_MY:    return "MY";
     default:                 return "POS";
   }
+}
+
+// Render up to RX_HEX_MAX_BYTES of a payload as "AA BB CC" into out (NUL-terminated).
+void format_payload_hex(const uint8_t *data, size_t len, char *out, size_t out_size) {
+  if (out_size == 0) return;
+  out[0] = '\0';
+  if (data == nullptr) return;
+  const size_t cap = (len > RX_HEX_MAX_BYTES) ? RX_HEX_MAX_BYTES : len;
+  size_t pos = 0;
+  for (size_t i = 0; i < cap && pos + 3 < out_size; i++) {
+    pos += snprintf(out + pos, out_size - pos, "%02X ", data[i]);
+  }
+  if (pos > 0)
+    out[pos - 1] = '\0';  // drop trailing space
 }
 }  // namespace
 #endif
@@ -216,14 +235,20 @@ void SomfyIohcCover::stop() {
 }
 
 void SomfyIohcCover::program() {
-  ESP_LOGD(TAG, "PROG (pair) node=0x%06X", this->node_id_);
+  ESP_LOGI(TAG, "PROG (pair): node=0x%06X -> dest=BROADCAST(0x%06X) repeat=%d",
+           this->node_id_, iohc::BROADCAST_ADDR, this->repeat_count_);
   auto frame_remove = this->build_1w_frame(iohc_cmd::CMD_REMOVE_CONTROLLER, nullptr, 0, iohc::BROADCAST_ADDR);
+  ESP_LOGD(TAG, "PROG: tx CMD_REMOVE_CONTROLLER (0x%02X), %u bytes",
+           iohc_cmd::CMD_REMOVE_CONTROLLER, static_cast<unsigned>(frame_remove.size()));
   this->hub_->transmit_packet(frame_remove, static_cast<uint8_t>(this->repeat_count_));
 
   uint8_t key_data[16];
   memcpy(key_data, this->encryption_key_, 16);
   auto frame_key = this->build_1w_frame(iohc_cmd::CMD_WRITE_PRIVATE, key_data, 16, iohc::BROADCAST_ADDR);
+  ESP_LOGD(TAG, "PROG: tx CMD_WRITE_PRIVATE (0x%02X), %u bytes (key omitted)",
+           iohc_cmd::CMD_WRITE_PRIVATE, static_cast<unsigned>(frame_key.size()));
   this->hub_->transmit_packet(frame_key, static_cast<uint8_t>(this->repeat_count_));
+  ESP_LOGI(TAG, "PROG: pairing frames sent");
 }
 
 // ---------------------------------------------------------------------------
@@ -360,22 +385,35 @@ void SomfyIohcCover::compute_1w_hmac(const uint8_t *payload, size_t payload_len,
 
 void SomfyIohcCover::on_iohc_packet_(const IohcDecodedPacket &pkt) {
 #ifdef USE_SOMFY_IOHC_RX
-  // --- State-sync: track movement commands sent by physical io-homecontrol
-  //     remotes so the HA UI matches the motor when driven outside HA. ---
-  uint16_t main_param;
-  if (pkt.src_node != this->node_id_ && decode_execute_param_(pkt, main_param)) {
-    const bool is_known = this->is_allowed_remote_(pkt.src_node);
+  // --- State-sync + discovery: surface movement commands sent by physical
+  //     io-homecontrol remotes so the HA UI matches the motor when driven
+  //     outside HA. Runs for both 1W and 2W covers — a foreign remote command
+  //     is a 1W broadcast frame regardless of this cover's own mode, so we must
+  //     inspect it before the 2W target-node filter below drops it. ---
+  if (pkt.src_node != this->node_id_ && pkt.cmd == iohc_cmd::CMD_EXECUTE) {
+    char hexbuf[RX_HEX_MAX_BYTES * 3 + 1];
+    format_payload_hex(pkt.data, pkt.data_len, hexbuf, sizeof(hexbuf));
+    ESP_LOGD(TAG, "RX EXECUTE src=0x%06" PRIX32 " dst=0x%06" PRIX32 " len=%u data=[%s] rssi=%.1f",
+             pkt.src_node, pkt.dest_node, static_cast<unsigned>(pkt.data_len), hexbuf, pkt.rssi);
 
-    // Publish to the discovery text sensor regardless of allow-list (so unknown
-    // remote IDs can be learned), mirroring the RTS detected_remote behaviour.
+    uint16_t main_param;
+    const bool decoded = decode_execute_param_(pkt, main_param);
+
+    // Publish to the discovery text sensor regardless of allow-list so unknown
+    // remote IDs (and unexpected payload layouts) can be learned, mirroring RTS.
     if (this->log_text_sensor_ != nullptr) {
-      char buf[64];
-      snprintf(buf, sizeof(buf), "0x%06" PRIX32 " %s 0x%04X",
-               pkt.src_node, main_param_name(main_param), main_param);
+      char buf[80];
+      if (decoded)
+        snprintf(buf, sizeof(buf), "0x%06" PRIX32 " %s 0x%04X",
+                 pkt.src_node, main_param_name(main_param), main_param);
+      else
+        snprintf(buf, sizeof(buf), "0x%06" PRIX32 " RAW [%s]", pkt.src_node, hexbuf);
       this->log_text_sensor_->publish_state(buf);
     }
 
-    if (is_known) {
+    if (decoded && this->is_allowed_remote_(pkt.src_node)) {
+      if (this->rx_is_duplicate_(pkt.src_node, main_param))
+        return;  // repeat frame from the remote's burst — already handled
       ESP_LOGD(TAG, "RX sync: remote 0x%06" PRIX32 " %s (mp=0x%04X) rssi=%.1f",
                pkt.src_node, main_param_name(main_param), main_param, pkt.rssi);
       this->handle_rx_command_(main_param);
@@ -416,6 +454,20 @@ bool SomfyIohcCover::decode_execute_param_(const IohcDecodedPacket &pkt, uint16_
     return false;
   main_param = (static_cast<uint16_t>(pkt.data[2]) << 8) | pkt.data[3];
   return true;
+}
+
+bool SomfyIohcCover::rx_is_duplicate_(uint32_t src, uint16_t main_param) {
+  const uint32_t now = millis();
+  if (this->rx_dedup_valid_ && src == this->rx_dedup_src_ && main_param == this->rx_dedup_param_ &&
+      (now - this->rx_dedup_ms_) < RX_DEDUP_WINDOW_MS) {
+    this->rx_dedup_ms_ = now;  // extend the window across the whole burst
+    return true;
+  }
+  this->rx_dedup_valid_ = true;
+  this->rx_dedup_src_ = src;
+  this->rx_dedup_param_ = main_param;
+  this->rx_dedup_ms_ = now;
+  return false;
 }
 
 void SomfyIohcCover::handle_rx_command_(uint16_t main_param) {

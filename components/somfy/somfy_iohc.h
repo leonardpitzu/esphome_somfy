@@ -153,9 +153,20 @@ class SomfyIohcCover : public time_based::TimeBasedCover {
   uint32_t rx_last_publish_ms_{0};
   float rx_last_published_pos_{-1.0f};
 
+  // Repeat-burst suppression: a physical remote transmits the same frame several
+  // times back-to-back (and the CC1101 hands us each copy separately). Collapse
+  // identical (src, main_param) pairs seen within a short window.
+  uint32_t rx_dedup_src_{0};
+  uint16_t rx_dedup_param_{0};
+  uint32_t rx_dedup_ms_{0};
+  bool rx_dedup_valid_{false};
+
   bool is_allowed_remote_(uint32_t code) const;
   // Decode the MainParameter from a CMD_EXECUTE packet (foreign remote command).
   static bool decode_execute_param_(const IohcDecodedPacket &pkt, uint16_t &main_param);
+  // True if this (src, main_param) is a duplicate of the previous one inside the
+  // dedup window (i.e. part of the remote's repeat burst).
+  bool rx_is_duplicate_(uint32_t src, uint16_t main_param);
   // Drive the HA UI animation in response to a recognised foreign command.
   void handle_rx_command_(uint16_t main_param);
 #endif

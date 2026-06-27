@@ -93,6 +93,10 @@ void SomfyIohcHub::setup() {
   ESP_LOGCONFIG(TAG, "Setting up Somfy iohc hub...");
   this->configure_radio_1w();
   this->cc1101_->register_listener(this);
+  // Enter RX immediately so we can hear physical io-homecontrol remotes (and 2W
+  // feedback) from boot — the CC1101 does not auto-listen, and otherwise RX
+  // would only start after the first HA-initiated TX.
+  this->cc1101_->begin_rx();
 }
 
 void SomfyIohcHub::loop() {
@@ -172,6 +176,8 @@ void SomfyIohcHub::start_2w_listen() {
 void SomfyIohcHub::stop_2w_listen() {
   this->listening_2w_ = false;
   this->configure_radio_1w();
+  // Resume 1W RX so passive state-sync keeps working after the 2W session.
+  this->cc1101_->begin_rx();
 }
 
 // ---------------------------------------------------------------------------

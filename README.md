@@ -318,6 +318,44 @@ cover:
 | `mode` | no | iohc only: `1w` (default) or `2w` |
 | `target_node` | 2W only | 3-byte hex address of target actuator |
 
+---
+
+## Rolling codes & reflashing
+
+RTS and iohc **1W** are *one-way* protocols with replay protection: every command
+carries an incrementing counter (the "rolling code"), and the motor remembers the
+last value it accepted and **rejects any command at or below it**. This component
+persists that counter in the ESP's **NVS flash** under `storage_key`, so it
+survives reboots and power loss.
+
+> iohc 2W does **not** use a rolling code — it authenticates with a
+> challenge/response handshake — so the rest of this section applies only to
+> RTS and iohc 1W.
+
+**The counter survives normal updates, but a clean/full erase resets it:**
+
+| Action | Rolling-code counter |
+|--------|----------------------|
+| Reboot / power loss | ✅ preserved |
+| **OTA** update (dashboard or wireless `esphome run`) | ✅ preserved |
+| Serial `esphome run` (normal upload) | ✅ preserved |
+| `esptool.py erase_flash` / "erase device" / flashing *from scratch* | ❌ **reset to 1** |
+| Changing the partition table / NVS layout | ❌ reset/invalidated |
+
+This is the trade-off of a *truly clean* reflash: a fresh flash means a **clean
+NVS**, so the counter restarts at `1` while the motor still expects a much higher
+value — and silently ignores the device until they're back in sync.
+
+**Recovery is a single button press: re-pair.** Put the motor into programming
+mode and press the **Prog …** button (see *Pairing (PROG)* above). Pairing
+re-enrols this `remote_code` and resets the motor's expected counter, so control
+resumes immediately. No reconfiguration or key changes are needed.
+
+**Tip for development / frequent reflashing:** after the first pairing, prefer
+**OTA** for updates so the counter is preserved. If you deliberately erase to get
+a clean device, just re-press PROG afterwards — otherwise "the motor stopped
+responding" looks like a protocol fault when it's only counter drift.
+
 ## Credits
 
 This project builds on prior work:
