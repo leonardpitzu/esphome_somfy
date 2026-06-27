@@ -1,5 +1,7 @@
 #pragma once
 
+#include "esphome/core/defines.h"
+
 #ifdef USE_SOMFY_IOHC
 
 #include "somfy_hub_iohc.h"
@@ -8,10 +10,19 @@
 #include "esphome/components/time_based/cover/time_based_cover.h"
 #include "esphome/core/automation.h"
 #include "esphome/core/component.h"
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <vector>
+
+#ifdef USE_SOMFY_IOHC_RX
+namespace esphome {
+namespace text_sensor {
+class TextSensor;
+}
+}  // namespace esphome
+#endif
 
 namespace esphome {
 namespace somfy {
@@ -72,6 +83,18 @@ class SomfyIohcCover : public time_based::TimeBasedCover {
   void set_mode(IohcMode mode) { this->mode_ = mode; }
   void set_target_node(uint32_t node) { this->target_node_ = node & 0x00FFFFFF; }
 
+#ifdef USE_SOMFY_IOHC_RX
+  // RX state-sync configuration (mirrors the RTS allowed_remotes/detected_remote
+  // feature). Codes are the 3-byte node IDs of physical io-homecontrol remotes.
+  void add_receive_remote_code(uint32_t code) {
+    code &= 0x00FFFFFF;
+    auto it = std::lower_bound(this->receive_remote_codes_.begin(), this->receive_remote_codes_.end(), code);
+    if (it == this->receive_remote_codes_.end() || *it != code)
+      this->receive_remote_codes_.insert(it, code);
+  }
+  void set_log_text_sensor(text_sensor::TextSensor *ts) { this->log_text_sensor_ = ts; }
+#endif
+
   void set_open_duration(uint32_t ms) { this->open_duration_ = ms; }
   void set_close_duration(uint32_t ms) { this->close_duration_ = ms; }
 
@@ -118,6 +141,24 @@ class SomfyIohcCover : public time_based::TimeBasedCover {
 
   // RX handler
   void on_iohc_packet_(const IohcDecodedPacket &pkt);
+
+#ifdef USE_SOMFY_IOHC_RX
+  // RX state-sync: keep HA in sync with physical io-homecontrol remotes.
+  std::vector<uint32_t> receive_remote_codes_;
+  text_sensor::TextSensor *log_text_sensor_{nullptr};
+  bool rx_sync_active_{false};
+  cover::CoverOperation rx_operation_{cover::COVER_OPERATION_IDLE};
+  uint32_t rx_start_ms_{0};
+  float rx_start_pos_{0.0f};
+  uint32_t rx_last_publish_ms_{0};
+  float rx_last_published_pos_{-1.0f};
+
+  bool is_allowed_remote_(uint32_t code) const;
+  // Decode the MainParameter from a CMD_EXECUTE packet (foreign remote command).
+  static bool decode_execute_param_(const IohcDecodedPacket &pkt, uint16_t &main_param);
+  // Drive the HA UI animation in response to a recognised foreign command.
+  void handle_rx_command_(uint16_t main_param);
+#endif
 
   // Action helper for time-based cover triggers
   template<typename... Ts> class IohcAction : public Action<Ts...> {

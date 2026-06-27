@@ -18,7 +18,8 @@ SomfyCover = somfy_ns.class_("SomfyCover", cover.Cover, cg.Component)
 SomfyIohcCover = somfy_ns.class_("SomfyIohcCover", cover.Cover, cg.Component)
 SomfyRtsHub = somfy_ns.class_("SomfyRtsHub", cg.Component)
 SomfyIohcHub = somfy_ns.class_("SomfyIohcHub", cg.Component)
-IohcMode = somfy_ns.enum("IohcMode")
+# IohcMode is a C++ `enum class`, so codegen must scope it (IohcMode::MODE_1W).
+IohcMode = somfy_ns.enum("IohcMode", is_class=True)
 
 # Shared config keys
 CONF_SOMFY_ID = "somfy_id"
@@ -133,6 +134,14 @@ IOHC_COVER_SCHEMA = cv.All(
                 IOHC_MODE_1W, IOHC_MODE_2W, lower=True
             ),
             cv.Optional(CONF_TARGET_NODE): cv.hex_uint32_t,
+            # RX state-sync: learn physical io-homecontrol remote IDs and keep
+            # HA in sync when a motor is driven by an original remote. The iohc
+            # hub always listens (CC1101 sits in RX), so unlike RTS no separate
+            # receiver is required.
+            cv.Optional(CONF_ALLOWED_REMOTES, default=[]): cv.ensure_list(
+                cv.hex_uint32_t
+            ),
+            cv.Optional(CONF_DETECTED_REMOTE): cv.use_id(text_sensor.TextSensor),
         }
     )
     .extend(COMMON_COVER_FIELDS)
@@ -229,3 +238,14 @@ async def _to_code_iohc(config):
             cg.add(var.set_target_node(config[CONF_TARGET_NODE]))
     else:
         cg.add(var.set_mode(IohcMode.MODE_1W))
+
+    # RX state-sync (mirrors the RTS allowed_remotes/detected_remote feature).
+    # Compiled in only when actually requested, so plain TX-only iohc covers
+    # pull in no extra code or the text_sensor dependency.
+    if uses_rx(config):
+        cg.add_define("USE_SOMFY_IOHC_RX")
+        for code in config.get(CONF_ALLOWED_REMOTES, []):
+            cg.add(var.add_receive_remote_code(code))
+        if config.get(CONF_DETECTED_REMOTE):
+            log_sensor = await cg.get_variable(config[CONF_DETECTED_REMOTE])
+            cg.add(var.set_log_text_sensor(log_sensor))

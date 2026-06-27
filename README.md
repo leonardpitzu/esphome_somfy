@@ -190,6 +190,39 @@ cover:
 - The component handles CRC-16 (Kermit) and AES-128 HMAC in software.
 - For bidirectional (2W) support, see the next section.
 
+### RX state-sync (sync with physical remotes)
+
+Just like RTS, the iohc hub can keep Home Assistant in sync when a motor is
+driven by an **original io-homecontrol remote**. The CC1101 is always listening,
+so no extra receiver hardware is needed — just add a text sensor and/or an
+allow-list to the cover:
+
+```yaml
+text_sensor:
+  - platform: template
+    id: somfy_iohc_rx_last
+    name: "Detected iohc Remote"
+
+cover:
+  - platform: somfy
+    type: iohc
+    id: bedroom_blind
+    # ... other options ...
+    somfy_id: iohc_radio
+    detected_remote: somfy_iohc_rx_last
+    allowed_remotes:
+      - 0x112233
+```
+
+1. Set `detected_remote` and press a button on the physical remote.
+2. Read the decoded `0x......` node ID from the text sensor.
+3. Add it to `allowed_remotes` and recompile.
+
+When a listed remote sends open/close/stop, the HA cover animates to match using
+the configured `open_duration`/`close_duration` (assumed-state, time-based). An
+empty `allowed_remotes` means *accept all* (discovery mode). RX-sync code is only
+compiled in when `detected_remote` or `allowed_remotes` is configured.
+
 </details>
 
 ---
@@ -251,6 +284,7 @@ cover:
 - The session has a 3-second timeout with up to 2 retries.
 - Unlike 1W, 2W frames do not use a rolling code — authentication is challenge/response based.
 - The system key is specific to your installation. It is **not** the public transfer key used by 1W.
+- RX state-sync (`detected_remote` / `allowed_remotes`) also works in 2W: foreign remote → motor commands are heard on the 868.95 MHz TX channel while the radio idles there. Verify decoding against your actuators on first use.
 
 </details>
 
@@ -278,8 +312,8 @@ cover:
 | `storage_key` | yes | NVS key for rolling code persistence (max 15 chars) |
 | `remote_code` | yes | Hex address of this virtual remote |
 | `prog_button` | yes | Button entity to trigger PROG pairing |
-| `detected_remote` | no | Text sensor for decoded remote IDs (RTS only) |
-| `allowed_remotes` | no | List of physical remote IDs to accept (RTS only) |
+| `detected_remote` | no | Text sensor for decoded remote IDs (RTS & iohc) |
+| `allowed_remotes` | no | List of physical remote IDs to accept for RX state-sync (RTS & iohc) |
 | `encryption_key` | no | Custom AES key hex string (iohc 1W: defaults to transfer key; iohc 2W: system key, required) |
 | `mode` | no | iohc only: `1w` (default) or `2w` |
 | `target_node` | 2W only | 3-byte hex address of target actuator |

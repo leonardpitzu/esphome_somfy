@@ -5,10 +5,37 @@
 #include "esphome/core/log.h"
 #include <cstring>
 
+#ifdef USE_SOMFY_IOHC_RX
+#include "esphome/components/text_sensor/text_sensor.h"
+#include <cinttypes>
+#include <cmath>
+#include <cstdio>
+#endif
+
 namespace esphome {
 namespace somfy {
 
 static const char *TAG = "somfy.iohc";
+
+#ifdef USE_SOMFY_IOHC_RX
+namespace {
+// Cover position bounds + publish throttling for RX-driven UI animation.
+constexpr float RX_POS_OPEN = 1.0f;
+constexpr float RX_POS_CLOSED = 0.0f;
+constexpr float RX_MIN_PUBLISH_DELTA = 0.01f;
+constexpr uint32_t RX_PUBLISH_INTERVAL_MS = 250;
+
+const char *main_param_name(uint16_t mp) {
+  switch (mp) {
+    case iohc_cmd::MP_OPEN:  return "OPEN";
+    case iohc_cmd::MP_CLOSE: return "CLOSE";
+    case iohc_cmd::MP_STOP:  return "STOP";
+    case iohc_cmd::MP_MY:    return "MY";
+    default:                 return "POS";
+  }
+}
+}  // namespace
+#endif
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -66,6 +93,68 @@ void SomfyIohcCover::setup() {
 }
 
 void SomfyIohcCover::loop() {
+#ifdef USE_SOMFY_IOHC_RX
+  if (this->rx_sync_active_) {
+    const uint32_t now_ms = millis();
+
+    const uint32_t full_dur_ms = (this->rx_operation_ == cover::COVER_OPERATION_OPENING)
+                                     ? this->open_duration_
+                                     : this->close_duration_;
+    float remaining = 1.0f;
+    if (this->rx_operation_ == cover::COVER_OPERATION_OPENING) {
+      remaining = RX_POS_OPEN - this->rx_start_pos_;
+    } else if (this->rx_operation_ == cover::COVER_OPERATION_CLOSING) {
+      remaining = this->rx_start_pos_ - RX_POS_CLOSED;
+    }
+    if (remaining < 0.0f) remaining = 0.0f;
+    if (remaining > 1.0f) remaining = 1.0f;
+
+    const uint32_t dur_ms = static_cast<uint32_t>(static_cast<float>(full_dur_ms) * remaining);
+
+    if (dur_ms == 0) {
+      this->position = (this->rx_operation_ == cover::COVER_OPERATION_OPENING) ? RX_POS_OPEN : RX_POS_CLOSED;
+      this->rx_sync_active_ = false;
+      this->current_operation = cover::COVER_OPERATION_IDLE;
+      this->rx_last_published_pos_ = this->position;
+      this->publish_state();
+      return;
+    }
+
+    const uint32_t elapsed = now_ms - this->rx_start_ms_;
+    float progress = (elapsed >= dur_ms) ? 1.0f : (static_cast<float>(elapsed) / static_cast<float>(dur_ms));
+
+    float new_pos = this->rx_start_pos_;
+    if (this->rx_operation_ == cover::COVER_OPERATION_OPENING) {
+      new_pos = this->rx_start_pos_ + (RX_POS_OPEN - this->rx_start_pos_) * progress;
+    } else if (this->rx_operation_ == cover::COVER_OPERATION_CLOSING) {
+      new_pos = this->rx_start_pos_ + (RX_POS_CLOSED - this->rx_start_pos_) * progress;
+    }
+
+    if (new_pos < RX_POS_CLOSED) new_pos = RX_POS_CLOSED;
+    if (new_pos > RX_POS_OPEN) new_pos = RX_POS_OPEN;
+
+    this->position = new_pos;
+
+    const bool time_ok = (this->rx_last_publish_ms_ == 0) ||
+                         ((now_ms - this->rx_last_publish_ms_) >= RX_PUBLISH_INTERVAL_MS);
+    const bool delta_ok = (this->rx_last_published_pos_ < RX_POS_CLOSED) ||
+                          (std::fabs(this->position - this->rx_last_published_pos_) >= RX_MIN_PUBLISH_DELTA);
+    if (time_ok && delta_ok) {
+      this->rx_last_publish_ms_ = now_ms;
+      this->rx_last_published_pos_ = this->position;
+      this->publish_state();
+    }
+
+    if (progress >= 1.0f) {
+      this->rx_sync_active_ = false;
+      this->current_operation = cover::COVER_OPERATION_IDLE;
+      this->rx_last_published_pos_ = this->position;
+      this->publish_state();
+    }
+    return;
+  }
+#endif  // USE_SOMFY_IOHC_RX
+
   TimeBasedCover::loop();
 }
 
@@ -78,6 +167,11 @@ void SomfyIohcCover::dump_config() {
   }
   ESP_LOGCONFIG(TAG, "  Storage: %s/%s", this->storage_namespace_, this->storage_key_);
   ESP_LOGCONFIG(TAG, "  Custom key: %s", this->has_custom_key_ ? "yes" : "no (transfer key)");
+#ifdef USE_SOMFY_IOHC_RX
+  ESP_LOGCONFIG(TAG, "  RX state-sync: enabled (%u allowed remote(s)%s)",
+                static_cast<unsigned>(this->receive_remote_codes_.size()),
+                this->receive_remote_codes_.empty() ? ", accept-all" : "");
+#endif
 }
 
 cover::CoverTraits SomfyIohcCover::get_traits() {
@@ -265,7 +359,32 @@ void SomfyIohcCover::compute_1w_hmac(const uint8_t *payload, size_t payload_len,
 // ---------------------------------------------------------------------------
 
 void SomfyIohcCover::on_iohc_packet_(const IohcDecodedPacket &pkt) {
-  // Only process packets addressed to us or broadcast
+#ifdef USE_SOMFY_IOHC_RX
+  // --- State-sync: track movement commands sent by physical io-homecontrol
+  //     remotes so the HA UI matches the motor when driven outside HA. ---
+  uint16_t main_param;
+  if (pkt.src_node != this->node_id_ && decode_execute_param_(pkt, main_param)) {
+    const bool is_known = this->is_allowed_remote_(pkt.src_node);
+
+    // Publish to the discovery text sensor regardless of allow-list (so unknown
+    // remote IDs can be learned), mirroring the RTS detected_remote behaviour.
+    if (this->log_text_sensor_ != nullptr) {
+      char buf[64];
+      snprintf(buf, sizeof(buf), "0x%06" PRIX32 " %s 0x%04X",
+               pkt.src_node, main_param_name(main_param), main_param);
+      this->log_text_sensor_->publish_state(buf);
+    }
+
+    if (is_known) {
+      ESP_LOGD(TAG, "RX sync: remote 0x%06" PRIX32 " %s (mp=0x%04X) rssi=%.1f",
+               pkt.src_node, main_param_name(main_param), main_param, pkt.rssi);
+      this->handle_rx_command_(main_param);
+      return;
+    }
+  }
+#endif  // USE_SOMFY_IOHC_RX
+
+  // --- 2W feedback / addressed-packet logging (status replies, ACKs). ---
   if (pkt.dest_node != this->node_id_ && pkt.dest_node != iohc::BROADCAST_ADDR)
     return;
 
@@ -276,6 +395,61 @@ void SomfyIohcCover::on_iohc_packet_(const IohcDecodedPacket &pkt) {
   ESP_LOGD(TAG, "RX for node 0x%06X: src=0x%06X cmd=0x%02X rssi=%.1f",
            this->node_id_, pkt.src_node, pkt.cmd, pkt.rssi);
 }
+
+#ifdef USE_SOMFY_IOHC_RX
+
+bool SomfyIohcCover::is_allowed_remote_(uint32_t code) const {
+  // Empty list = discovery / accept-all (matches RTS semantics).
+  return this->receive_remote_codes_.empty() ||
+         std::binary_search(this->receive_remote_codes_.begin(), this->receive_remote_codes_.end(), code);
+}
+
+bool SomfyIohcCover::decode_execute_param_(const IohcDecodedPacket &pkt, uint16_t &main_param) {
+  if (pkt.cmd != iohc_cmd::CMD_EXECUTE || pkt.data == nullptr)
+    return false;
+  // Standard io-homecontrol CMD_EXECUTE payload:
+  //   Originator(1) ACEI(1) MainParameter(2) [FP1(1) FP2(1)] ...
+  // The MainParameter sits at a fixed offset from the start of the data field,
+  // ahead of any trailing HMAC/MAC bytes, so reading data[2..3] is robust to
+  // the variable frame tail.
+  if (pkt.data_len < 4)
+    return false;
+  main_param = (static_cast<uint16_t>(pkt.data[2]) << 8) | pkt.data[3];
+  return true;
+}
+
+void SomfyIohcCover::handle_rx_command_(uint16_t main_param) {
+  auto start_rx_move = [this](cover::CoverOperation op) {
+    this->rx_sync_active_ = true;
+    this->rx_operation_ = op;
+    this->rx_start_ms_ = millis();
+    this->rx_start_pos_ = this->position;
+    this->rx_last_publish_ms_ = 0;
+    this->rx_last_published_pos_ = -1.0f;
+    this->current_operation = op;
+    this->publish_state();
+  };
+
+  switch (main_param) {
+    case iohc_cmd::MP_OPEN:
+      start_rx_move(cover::COVER_OPERATION_OPENING);
+      break;
+    case iohc_cmd::MP_CLOSE:
+      start_rx_move(cover::COVER_OPERATION_CLOSING);
+      break;
+    case iohc_cmd::MP_STOP:
+    case iohc_cmd::MP_MY:
+      this->rx_sync_active_ = false;
+      this->current_operation = cover::COVER_OPERATION_IDLE;
+      this->publish_state();
+      break;
+    default:
+      // Unknown / position command: leave UI untouched (discovery already logged).
+      break;
+  }
+}
+
+#endif  // USE_SOMFY_IOHC_RX
 
 }  // namespace somfy
 }  // namespace esphome
