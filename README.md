@@ -76,7 +76,7 @@ cover:
     somfy_id: rts_radio
 ```
 
-### With receiver (RX — sync with physical remotes)
+### With receiver (RX - sync with physical remotes)
 
 ```yaml
 remote_receiver:
@@ -116,7 +116,7 @@ cover:
 The ESPHome device acts like a new Somfy RTS remote identified by `remote_code`. Before it can control a motor, that motor must be paired:
 
 1. Put the motor into *programming mode* using an **already paired** physical remote (hold PROG ~2 s until the motor jogs).
-2. Within the programming window, press the **Prog …** button in Home Assistant.
+2. Within the programming window, press the **Prog ...** button in Home Assistant.
 3. The motor jogs again to confirm pairing.
 
 ### Detecting remote IDs
@@ -131,7 +131,7 @@ The ESPHome device acts like a new Somfy RTS remote identified by `remote_code`.
 ---
 
 <details>
-<summary><h2>iohc configuration (1W — one-way)</h2></summary>
+<summary><h2>iohc configuration (1W - one-way)</h2></summary>
 
 Requires ESPHome 2026.4+ with the native `cc1101` component in packet mode.
 
@@ -194,7 +194,7 @@ cover:
 
 Just like RTS, the iohc hub can keep Home Assistant in sync when a motor is
 driven by an **original io-homecontrol remote**. The CC1101 is always listening,
-so no extra receiver hardware is needed — just add a text sensor and/or an
+so no extra receiver hardware is needed - just add a text sensor and/or an
 allow-list to the cover:
 
 ```yaml
@@ -228,14 +228,14 @@ compiled in when `detected_remote` or `allowed_remotes` is configured.
 ---
 
 <details>
-<summary><h2>iohc configuration (2W — bidirectional)</h2></summary>
+<summary><h2>iohc configuration (2W - bidirectional)</h2></summary>
 
 2W mode enables authenticated bidirectional communication with io-homecontrol actuators. The controller sends a command, the actuator replies with a cryptographic challenge, and the controller responds to prove it holds the system key. This provides command acknowledgement and status feedback.
 
 ### Requirements
 
 - ESPHome 2026.4+ with native `cc1101` component in packet mode
-- The **system key** (per-installation AES-128 key) — obtained during initial pairing or from a paired controller backup
+- The **system key** (per-installation AES-128 key) - obtained during initial pairing or from a paired controller backup
 - The actuator's **node address** (3-byte, e.g. `0xABCDEF`)
 
 ### Protocol overview
@@ -282,9 +282,9 @@ cover:
 
 - TX is always on **868.95 MHz**; RX hops across 3 channels (868.25 / 868.95 / 869.85 MHz) with 2.7 ms dwell time.
 - The session has a 3-second timeout with up to 2 retries.
-- Unlike 1W, 2W frames do not use a rolling code — authentication is challenge/response based.
+- Unlike 1W, 2W frames do not use a rolling code - authentication is challenge/response based.
 - The system key is specific to your installation. It is **not** the public transfer key used by 1W.
-- RX state-sync (`detected_remote` / `allowed_remotes`) also works in 2W: foreign remote → motor commands are heard on the 868.95 MHz TX channel while the radio idles there. Verify decoding against your actuators on first use.
+- RX state-sync (`detected_remote` / `allowed_remotes`) also works in 2W: foreign remote -> motor commands are heard on the 868.95 MHz TX channel while the radio idles there. Verify decoding against your actuators on first use.
 
 </details>
 
@@ -328,32 +328,32 @@ last value it accepted and **rejects any command at or below it**. This componen
 persists that counter in the ESP's **NVS flash** under `storage_key`, so it
 survives reboots and power loss.
 
-> iohc 2W does **not** use a rolling code — it authenticates with a
-> challenge/response handshake — so the rest of this section applies only to
+> iohc 2W does **not** use a rolling code - it authenticates with a
+> challenge/response handshake - so the rest of this section applies only to
 > RTS and iohc 1W.
 
 **The counter survives normal updates, but a clean/full erase resets it:**
 
 | Action | Rolling-code counter |
 |--------|----------------------|
-| Reboot / power loss | ✅ preserved |
-| **OTA** update (dashboard or wireless `esphome run`) | ✅ preserved |
-| Serial `esphome run` (normal upload) | ✅ preserved |
-| `esptool.py erase_flash` / "erase device" / flashing *from scratch* | ❌ **reset to 1** |
-| Changing the partition table / NVS layout | ❌ reset/invalidated |
+| Reboot / power loss | preserved |
+| **OTA** update (dashboard or wireless `esphome run`) | preserved |
+| Serial `esphome run` (normal upload) | preserved |
+| `esptool.py erase_flash` / "erase device" / flashing *from scratch* | **reset to 1** |
+| Changing the partition table / NVS layout | reset/invalidated |
 
 This is the trade-off of a *truly clean* reflash: a fresh flash means a **clean
 NVS**, so the counter restarts at `1` while the motor still expects a much higher
-value — and silently ignores the device until they're back in sync.
+value - and silently ignores the device until they're back in sync.
 
 **Recovery is a single button press: re-pair.** Put the motor into programming
-mode and press the **Prog …** button (see *Pairing (PROG)* above). Pairing
+mode and press the **Prog ...** button (see *Pairing (PROG)* above). Pairing
 re-enrols this `remote_code` and resets the motor's expected counter, so control
 resumes immediately. No reconfiguration or key changes are needed.
 
 **Tip for development / frequent reflashing:** after the first pairing, prefer
 **OTA** for updates so the counter is preserved. If you deliberately erase to get
-a clean device, just re-press PROG afterwards — otherwise "the motor stopped
+a clean device, just re-press PROG afterwards - otherwise "the motor stopped
 responding" looks like a protocol fault when it's only counter drift.
 
 ## Credits
@@ -367,4 +367,4 @@ This project builds on prior work:
 
 ## License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
