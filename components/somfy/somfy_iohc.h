@@ -53,9 +53,10 @@ static constexpr uint8_t ORIGINATOR_RAIN = 0x02;
 static constexpr uint8_t ORIGINATOR_TIMER = 0x03;
 static constexpr uint8_t ORIGINATOR_SECURITY = 0x08;
 
-// ACEI (Access Control & Encryption Info)
-static constexpr uint8_t ACEI_DEFAULT = 0x43;   // 1W: standard
-static constexpr uint8_t ACEI_2W = 0xE7;        // 2W: authenticated
+// ACEI (Access Control & Encryption Info). 0x61 is the value Somfy actuators
+// expect (confirmed against rtl_433 EXECUTE captures: Originator 0x01, ACEI 0x61).
+static constexpr uint8_t ACEI_DEFAULT = 0x61;   // 1W
+static constexpr uint8_t ACEI_2W = 0x61;        // 2W
 
 static constexpr uint8_t TX_REPEAT_COUNT = 4;
 }  // namespace iohc_cmd
@@ -132,8 +133,12 @@ class SomfyIohcCover : public time_based::TimeBasedCover {
 
   // 1W Protocol (per-device: uses device key + rolling code)
   void send_1w_command(uint16_t main_param);
-  std::vector<uint8_t> build_1w_frame(uint8_t cmd, const uint8_t *data, size_t data_len, uint32_t dest_node);
-  void compute_1w_hmac(const uint8_t *payload, size_t payload_len, uint16_t sequence, uint8_t *mac_out);
+  // Build a complete 1W frame. The MAC authenticates cmd || data[0..auth_len);
+  // auth_len defaults to the full data length. The 0x30 key-push frame uses a
+  // shorter auth_len because its trailing manufacturer bytes are not
+  // authenticated.
+  std::vector<uint8_t> build_1w_frame(uint8_t cmd, const uint8_t *data, size_t data_len,
+                                      uint32_t dest_node, size_t auth_len = SIZE_MAX);
 
   // 2W Protocol (uses challenge/response via hub session)
   void send_2w_command(uint16_t main_param);

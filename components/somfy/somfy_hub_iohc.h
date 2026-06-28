@@ -31,9 +31,19 @@ static constexpr float FREQUENCY_2W_CH2 = 869.85e6f;
 static constexpr float FREQUENCY_2W[] = {FREQUENCY_2W_CH0, FREQUENCY_2W_CH1, FREQUENCY_2W_CH2};
 static constexpr uint32_t CHANNEL_DWELL_US = 2700;
 
-// Sync word
+// Logical sync bytes (these are what the documented captures show). On air
+// they are UART-encoded; the CC1101 hardware sync word is therefore programmed
+// to iohc_proto::PHY_HW_SYNC1/0 (0x7FD9), the first 16 bits of the encoded
+// 0xFF 0x33 sequence — see iohc_protocol.h.
 static constexpr uint8_t SYNC1 = 0xFF;
 static constexpr uint8_t SYNC0 = 0x33;
+
+// Fixed-length RX capture window (raw on-air bytes the CC1101 collects after a
+// sync match). Sized to cover the largest decodable io-homecontrol frame: a
+// 47-byte logical frame UART-encodes to ~60 raw bytes. The software UART
+// decoder + ctrl0 length field trim away any trailing bytes. Must stay <= 64
+// (the CC1101 FIFO depth).
+static constexpr uint8_t RX_FIFO_WINDOW = 60;
 
 // Broadcast address
 static constexpr uint32_t BROADCAST_ADDR = 0x00003F;
@@ -58,8 +68,8 @@ static constexpr uint8_t CMD_CHALLENGE_RESPONSE = 0x3D;
 static constexpr uint8_t CMD_STATUS = 0xFE;
 
 // 2W frame control byte flags
-static constexpr uint8_t CTRL0_2W = 0x00;       // isOneWay = 0
-static constexpr uint8_t CTRL1_START_END = 0x03; // StartFrame=1, EndFrame=1
+static constexpr uint8_t CTRL0_2W = 0x00;       // isOneWay = 0, order = 0
+static constexpr uint8_t CTRL1_2W = 0x00;       // no Start/End framing bits
 
 }  // namespace iohc
 
@@ -110,7 +120,7 @@ struct Session2W {
   uint32_t dest_node{0};
   uint8_t cmd{0};
   std::vector<uint8_t> cmd_data;
-  std::vector<uint8_t> frame_payload;  // dest+src+cmd+data (for IV computation)
+  std::vector<uint8_t> frame_payload;  // cmd+data (authenticated MAC input)
   uint8_t key[16]{};
   uint8_t challenge[6]{};
   uint32_t started_ms{0};
