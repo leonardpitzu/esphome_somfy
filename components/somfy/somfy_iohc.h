@@ -43,7 +43,7 @@ static constexpr uint8_t CMD_REMOVE_CONTROLLER = 0x39;
 
 // Main Parameters for CMD_EXECUTE
 static constexpr uint16_t MP_OPEN = 0x0000;
-static constexpr uint16_t MP_CLOSE = 0xC800;
+static constexpr uint16_t MP_CLOSE = 0xD400;
 static constexpr uint16_t MP_STOP = 0xD200;
 static constexpr uint16_t MP_MY = 0xD800;
 

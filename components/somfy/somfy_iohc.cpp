@@ -280,6 +280,7 @@ void SomfyIohcCover::send_1w_command(uint16_t main_param) {
       0x00,  // FP1
       0x00,  // FP2
   };
+  ESP_LOGD(TAG, "TX EXECUTE 1W: src=0x%06X dst=BROADCAST mp=0x%04X", this->node_id_, main_param);
   auto frame = this->build_1w_frame(iohc_cmd::CMD_EXECUTE, data, sizeof(data), iohc::BROADCAST_ADDR);
   this->hub_->transmit_packet(frame, static_cast<uint8_t>(this->repeat_count_));
 }
@@ -381,6 +382,14 @@ std::vector<uint8_t> SomfyIohcCover::build_1w_frame(uint8_t cmd, const uint8_t *
   // CtrlByte0: order=11, isOneWay=1, size = body length (everything after ctrl0,
   // excluding the trailing CRC) masked to 5 bits.
   const size_t size_field = frame.size() - 1;
+  if (size_field > 0x1F) {
+    // io-homecontrol's 5-bit length field caps a single frame at 31 body bytes
+    // (max ~21 data bytes). Larger frames must be fragmented; a receiver reads
+    // length & 0x1F and parses the wrong length. Pairing's CMD_WRITE_PRIVATE
+    // (0x30) is 34 bytes and trips this — flagging it so it shows in logs.
+    ESP_LOGW(TAG, "1W frame cmd=0x%02X body=%u B exceeds 31-byte 1W limit; size field wraps to %u",
+             cmd, static_cast<unsigned>(size_field), static_cast<unsigned>(size_field & 0x1F));
+  }
   frame[0] = static_cast<uint8_t>(0xE0 | (size_field & 0x1F));
 
   // CRC-16-KERMIT
@@ -388,6 +397,8 @@ std::vector<uint8_t> SomfyIohcCover::build_1w_frame(uint8_t cmd, const uint8_t *
   frame.push_back(static_cast<uint8_t>(crc & 0xFF));
   frame.push_back(static_cast<uint8_t>((crc >> 8) & 0xFF));
 
+  ESP_LOGD(TAG, "1W frame cmd=0x%02X dst=0x%06X seq=%u crc=0x%04X ctrl0=0x%02X (%u B)", cmd, dest_node,
+           sequence, crc, frame[0], static_cast<unsigned>(frame.size()));
   return frame;
 }
 

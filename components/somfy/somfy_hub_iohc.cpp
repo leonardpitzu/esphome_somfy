@@ -4,6 +4,7 @@
 
 #include "iohc_protocol.h"
 #include "esphome/core/log.h"
+#include "esphome/core/helpers.h"
 #include <cstring>
 #include <mbedtls/aes.h>
 
@@ -91,6 +92,11 @@ void SomfyIohcHub::transmit_packet(const std::vector<uint8_t> &frame, uint8_t re
   std::vector<uint8_t> payload;
   iohc_proto::uart_encode(frame.data(), frame.size(), payload);
   this->cc1101_->set_packet_length(static_cast<uint8_t>(payload.size()));
+
+  ESP_LOGD(TAG, "TX 1W logical (%u B): %s", static_cast<unsigned>(frame.size()),
+           format_hex_pretty(frame).c_str());
+  ESP_LOGV(TAG, "TX 1W on-air (%u B): %s", static_cast<unsigned>(payload.size()),
+           format_hex_pretty(payload).c_str());
 
   for (int i = 0; i < repeat_count; i++) {
     auto err = this->cc1101_->transmit_packet(payload);
