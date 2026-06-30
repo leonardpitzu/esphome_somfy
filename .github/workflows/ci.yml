@@ -3,16 +3,25 @@ name: CI
 on:
   push:
     branches: [main, master]
+    paths-ignore: ["**.md", "LICENSE"]
   pull_request:
-    branches: [main, master]
+    paths-ignore: ["**.md", "LICENSE"]
   schedule:
     # Weekly build to catch breakage from ESPHome updates
     - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   ruff:
     name: Lint (Ruff)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
@@ -25,11 +34,14 @@ jobs:
   tests:
     name: Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements_test.txt
       - name: Install test dependencies
         run: pip install -r requirements_test.txt
       - name: Run tests
@@ -38,6 +50,7 @@ jobs:
   esphome-compile:
     name: ESPHome Compile (${{ matrix.fixture }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       matrix:
         fixture:
