@@ -39,11 +39,9 @@ struct RtsFrame {
 // ---------------------------------------------------------------------------
 
 void SomfyRtsHub::setup() {
+  // The RX listener is registered from to_code() (remote_base.add_listener),
+  // which ESPHome 2026.10+ requires so it can size the receiver's listener list.
   ESP_LOGCONFIG(TAG, "Setting up Somfy RTS hub...");
-  if (this->remote_receiver_ != nullptr) {
-    ESP_LOGD(TAG, "Registering RX listener on hub");
-    this->remote_receiver_->register_listener(this);
-  }
 }
 
 void SomfyRtsHub::loop() {}

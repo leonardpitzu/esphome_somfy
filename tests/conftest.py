@@ -55,6 +55,7 @@ def _install_esphome_mocks():
         "esphome.core.entity_helpers": entity_helpers,
         "esphome.components": components,
         "esphome.components.button": components.button,
+        "esphome.components.remote_base": components.remote_base,
         "esphome.components.remote_transmitter": components.remote_transmitter,
         "esphome.components.remote_receiver": components.remote_receiver,
         "esphome.components.text_sensor": components.text_sensor,

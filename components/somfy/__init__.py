@@ -1,6 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import remote_receiver, remote_transmitter
+from esphome.components import remote_base, remote_receiver, remote_transmitter
 from esphome.const import CONF_ID, CONF_TYPE, PLATFORM_ESP32
 
 CODEOWNERS = ["@LeonardPitzu"]
@@ -73,6 +73,13 @@ async def to_code(config):
         if CONF_REMOTE_RECEIVER in config:
             rx = await cg.get_variable(config[CONF_REMOTE_RECEIVER])
             cg.add(var.set_remote_receiver(rx))
+            # Since ESPHome 2026.10 the receiver's listener list is sized at
+            # codegen, so the hub must claim its slot here instead of in setup().
+            add_listener = getattr(remote_base, "add_listener", None)
+            if add_listener is not None:
+                add_listener(rx, var)
+            else:
+                cg.add(rx.register_listener(var))
 
     elif typ == TYPE_IOHC:
         var = cg.new_Pvariable(config[CONF_ID])

@@ -145,8 +145,12 @@ struct Rig {
     g_rolling_code = 1;
 
     this->hub.set_remote_transmitter(&this->tx);
-    if (with_receiver)
+    if (with_receiver) {
+      // Mirrors the generated code: to_code() links the receiver and registers
+      // the hub as its listener before any setup() runs.
       this->hub.set_remote_receiver(&this->rx);
+      this->rx.register_listener(&this->hub);
+    }
     this->hub.setup();
 
     this->cover.set_hub(&this->hub);
@@ -200,7 +204,7 @@ static void test_tx_mandatory_rx_optional() {
   check(tx_only.tx.transmit_count == 3, "stop() transmits a frame");
 
   Rig with_rx;
-  check(with_rx.rx.listeners.size() == 1, "hub with a receiver registers exactly one RX listener");
+  check(with_rx.rx.listeners.size() == 1, "setup() does not register the hub a second time");
 }
 
 /// setup() must register the cover on the hub, otherwise decoded frames never
