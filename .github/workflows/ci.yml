@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [master]
     paths-ignore: ["**.md", ".gitignore", "LICENSE"]
   pull_request:
     paths-ignore: ["**.md", ".gitignore", "LICENSE"]

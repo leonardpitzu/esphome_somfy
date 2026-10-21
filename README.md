@@ -33,7 +33,7 @@ The hub handles all radio TX/RX and protocol framing. Device classes (covers tod
 
 ```yaml
 external_components:
-  source: github://leonardpitzu/esphome_somfy@main
+  source: github://leonardpitzu/esphome_somfy@master
   components: [somfy]
   refresh: 600s
 ```
@@ -278,7 +278,7 @@ api:
   custom_services: true
 
 external_components:
-  source: github://leonardpitzu/esphome_somfy@main
+  source: github://leonardpitzu/esphome_somfy@master
   components: [somfy, somfy_iohc_manager]
 
 text_sensor:

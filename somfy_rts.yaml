@@ -6,7 +6,7 @@ packages:
   common: !include packages/common.yaml
 
 external_components:
-  source: github://leonardpitzu/esphome_somfy@main
+  source: github://leonardpitzu/esphome_somfy@master
   components: [somfy]
   refresh: 600s
 
