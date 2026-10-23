@@ -42,7 +42,12 @@ void SomfyCover::on_rts_frame_(const RtsDecodedFrame &frame) {
 
     case RtsCommand::My:
     case RtsCommand::UpDown:
-      this->stop_rx_sync_();
+      if (this->current_operation == cover::COVER_OPERATION_IDLE &&
+          !this->rx_sync_.active() && this->has_my_position_) {
+        this->start_rx_sync_to(this->my_position_);
+      } else {
+        this->stop_rx_sync_();
+      }
       break;
 
     default:
@@ -55,6 +60,16 @@ void SomfyCover::on_rts_frame_(const RtsDecodedFrame &frame) {
 void SomfyCover::start_rx_sync_(cover::CoverOperation op) {
   this->rx_sync_.start(op == cover::COVER_OPERATION_OPENING, this->position, millis());
   this->current_operation = op;
+  this->publish_state();
+}
+
+
+void SomfyCover::start_rx_sync_to(float target_position) {
+  this->rx_sync_.start_to(target_position, this->position, millis());
+
+  this->current_operation = target_position >= this->position
+                                ? cover::COVER_OPERATION_OPENING
+                                : cover::COVER_OPERATION_CLOSING;
   this->publish_state();
 }
 
@@ -96,7 +111,8 @@ void SomfyCover::setup() {
   automationTriggerStop_->add_action(actionTriggerStop_.get());
 
   this->cover_prog_button_->add_on_press_callback([=, this] { return this->program(); });
-
+  if (this->my_button_ != nullptr)
+    this->my_button_->add_on_press_callback([this]() { this->my(); });
   this->has_built_in_endstop_ = true;
   this->assumed_state_ = true;
 
@@ -159,6 +175,23 @@ void SomfyCover::open()    { log_and_send_("OPEN", RtsCommand::Up);    }
 void SomfyCover::close()   { log_and_send_("CLOSE", RtsCommand::Down); }
 void SomfyCover::stop()    { log_and_send_("STOP", RtsCommand::My);    }
 void SomfyCover::program() { log_and_send_("PROG", RtsCommand::Prog);  }
+void SomfyCover::my() {
+  #ifdef USE_SOMFY_COVER_RX
+  if (this->rx_sync_.active())
+    this->stop_rx_sync_();
+  #endif
+  // Send stop command if the motor is currently moving
+  if (this->current_operation != cover::COVER_OPERATION_IDLE) {
+    log_and_send_("STOP", RtsCommand::My);
+  }
+  // Send my command
+  this->set_timeout("cover-my-command", 500, [this]() {log_and_send_("STOP", RtsCommand::My);});
+  #ifdef USE_SOMFY_COVER_RX
+  if (this->has_my_position_) {
+    this->start_rx_sync_to(this->my_position_);
+  } 
+  #endif
+}
 
 void SomfyCover::build_frame(std::array<uint8_t, 7> &bytes, RtsCommand command, uint16_t code) {
   bytes.fill(0x00);

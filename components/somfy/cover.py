@@ -34,6 +34,8 @@ CONF_SOMFY_STORAGE_NAMESPACE = "storage_namespace"
 CONF_REPEAT_COMMAND_COUNT = "repeat_command_count"
 CONF_PROG_BUTTON = "prog_button"
 CONF_INITIAL_ROLLING_CODE = "initial_rolling_code"
+CONF_MY_BUTTON = "my_button"
+CONF_MY_POSITION = "my_position"
 
 # RTS-specific
 CONF_ALLOWED_REMOTES = "allowed_remotes"
@@ -43,8 +45,6 @@ CONF_DETECTED_REMOTE = "detected_remote"
 CONF_ENCRYPTION_KEY = "encryption_key"
 CONF_IOHC_MODE = "mode"
 CONF_TARGET_NODE = "target_node"
-CONF_MY_BUTTON = "my_button"
-CONF_MY_POSITION = "my_position"
 
 TYPE_RTS = "rts"
 TYPE_IOHC = "iohc"
@@ -154,6 +154,8 @@ COMMON_COVER_FIELDS = {
     cv.Optional(CONF_INITIAL_ROLLING_CODE, default=1): cv.hex_int_range(
         min=1, max=0xFFFF
     ),
+    cv.Optional(CONF_MY_POSITION): cv.percentage,
+    cv.Optional(CONF_MY_BUTTON): cv.use_id(button.Button),
 }
 
 RTS_COVER_SCHEMA = (
@@ -181,8 +183,6 @@ IOHC_COVER_SCHEMA = cv.All(
                 IOHC_MODE_1W, IOHC_MODE_2W, lower=True
             ),
             cv.Optional(CONF_TARGET_NODE): cv.hex_uint32_t,
-            cv.Optional(CONF_MY_POSITION): cv.percentage,
-            cv.Optional(CONF_MY_BUTTON): cv.use_id(button.Button),
             # RX state-sync: learn physical io-homecontrol remote IDs and keep
             # HA in sync when a motor is driven by an original remote. The iohc
             # hub always listens (CC1101 sits in RX), so unlike RTS no separate
@@ -286,6 +286,12 @@ async def _to_code_rts(config):
     cg.add(var.set_storage_namespace(config[CONF_SOMFY_STORAGE_NAMESPACE]))
     cg.add(var.set_initial_rolling_code(config[CONF_INITIAL_ROLLING_CODE]))
     cg.add(var.set_repeat_count(config[CONF_REPEAT_COMMAND_COUNT]))
+
+    if CONF_MY_POSITION in config:
+        cg.add(var.set_my_position(config[CONF_MY_POSITION]))
+    if CONF_MY_BUTTON in config:
+        my_button = await cg.get_variable(config[CONF_MY_BUTTON])
+        cg.add(var.set_my_button(my_button))
 
     if CONF_ALLOWED_REMOTES in config:
         for code in config[CONF_ALLOWED_REMOTES]:

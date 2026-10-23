@@ -60,7 +60,11 @@ public:
   void set_storage_key(const char *key) { this->storage_key_ = key; }
   void set_initial_rolling_code(uint16_t code) { this->initial_rolling_code_ = code; }
   void set_repeat_count(int count) { this->repeat_count_ = count; }
-
+  void set_my_button(button::Button *btn) { this->my_button_ = btn; }
+  void set_my_position(float position) {
+    this->my_position_ = position;
+    this->has_my_position_ = true;
+  }
   cover::CoverTraits get_traits() override;
 
 protected:
@@ -71,6 +75,7 @@ protected:
 
   // Per-device config
   button::Button *cover_prog_button_{nullptr};
+  button::Button *my_button_{nullptr}; 
   uint32_t remote_code_{0};
   const char *storage_namespace_{nullptr};
   const char *storage_key_{nullptr};
@@ -87,10 +92,15 @@ protected:
   // Physical-remote UI animation state.
   RxSyncAnimator rx_sync_;
 
+  // My position handling
+  float my_position_{0.5f};
+  bool has_my_position_{false};
+  
   // RX handler (registered on hub)
   void on_rts_frame_(const RtsDecodedFrame &frame);
   bool is_allowed_remote_(uint32_t code) const;
   void start_rx_sync_(cover::CoverOperation op);
+  void start_rx_sync_to(float target_position);
   void stop_rx_sync_();
 
   // TX
@@ -98,6 +108,7 @@ protected:
   void build_frame(std::array<uint8_t, 7> &bytes, RtsCommand command, uint16_t code);
   void send_command(RtsCommand command);
   void open();
+  void my();
   void close();
   void stop();
   void program();
