@@ -29,6 +29,28 @@ The hub handles all radio TX/RX and protocol framing. Device classes (covers tod
 - **For RTS:** CC1101 433 MHz module + antenna (via ESPHome `remote_transmitter` / `remote_receiver`)
 - **For iohc:** CC1101 868 MHz module + antenna (via ESPHome native `cc1101` component in packet mode)
 
+### Wiring
+
+The example nodes are a Seeed Studio **XIAO ESP32-S3** wired to a CC1101 module. RTS and iohc wire the
+CC1101 slightly differently (chip select and GDO0 move), so the table lists both. On another ESP32 board,
+use the GPIO numbers. The pinout below shows the 433 MHz module and the RTS roles of GDO0/GDO2; the 868 MHz
+module has the same 8-pin header.
+
+![XIAO ESP32-S3 pinout](XIAO_ESP32-S3.png)
+
+![CC1101 module pinout](CC1101_pinout.png)
+
+| CC1101 pin | Signal | RTS (`somfy_rts.yaml`) | iohc (`somfy_iohc_1w.yaml`, `somfy_iohc_2w.yaml`) |
+|---|---|---|---|
+| 1 | GND | GND | GND |
+| 2 | VCC | 3V3 (never 5 V) | 3V3 (never 5 V) |
+| 3 | GDO0 | D3 / GPIO04 - TX data, `remote_transmitter` pin | D1 / GPIO02 - `cc1101: gdo0_pin` (packet mode) |
+| 4 | CSN | D5 / GPIO06 - `cc1101: cs_pin` | D3 / GPIO04 - `cc1101: cs_pin` |
+| 5 | SCK | D8 / GPIO07 - `spi: clk_pin` | D8 / GPIO07 - `spi: clk_pin` |
+| 6 | MOSI | D10 / GPIO09 - `spi: mosi_pin` | D10 / GPIO09 - `spi: mosi_pin` |
+| 7 | MISO / GDO1 | D9 / GPIO08 - `spi: miso_pin` | D9 / GPIO08 - `spi: miso_pin` |
+| 8 | GDO2 | D2 / GPIO03 - RX data, `remote_receiver` pin | not used |
+
 ## Installation
 
 ```yaml
